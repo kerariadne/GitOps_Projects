@@ -58,6 +58,16 @@ jobs:
             if [ -n "$IP" ]; then echo "App URL: http://$IP"; break; fi
             sleep 10
           done
+
+      - name: Login to Argo CD
+        run: |
+          argocd admin initial-password -n argocd | tee /tmp/password.txt
+          argocd login localhost:8080 --username admin --password $(cat /tmp/password.txt) --insecure
+
+      - name: Update Argo CD Admin password
+        run: |
+          argocd account update-password --current-password $(cat /tmp/password.txt) --new-password ${{ secrets.ARGOCD_NEW_PASSWORD }}
+
       - name: password
         run: |
           kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath="{.data.password}" | base64 -d && echo
