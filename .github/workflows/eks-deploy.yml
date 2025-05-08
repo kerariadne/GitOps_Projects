@@ -2,8 +2,7 @@ name: Deploy to EKS with Argo CD
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
 
 jobs:
   deploy:
@@ -13,7 +12,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v2
 
-      - name: Set up AWS credentials
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -23,30 +22,39 @@ jobs:
       - name: Update kubeconfig
         run: aws eks update-kubeconfig --region us-west-2 --name gitops-cluster
 
-      - name: Create Argo CD namespace if not exists
+      - name: Create Argo CD namespace
         run: kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Install Argo CD
-        run: |
-          kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+        run: kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
-      - name: Patch Argo CD service to LoadBalancer
+      - name: Patch Argo CD server to LoadBalancer
         run: |
           kubectl patch svc argocd-server -n argocd -p '{"spec": {"type": "LoadBalancer"}}'
 
-      - name: Wait for Argo CD server to be ready
+      - name: Wait for Argo CD server external IP
         run: |
-          kubectl wait --for=condition=available deployment/argocd-server -n argocd --timeout=180s
+          echo "Waiting for Argo CD LoadBalancer external IP..."
+          for i in {1..30}; do
+            IP=$(kubectl get svc argocd-server -n argocd -o jsonpath="{.status.loadBalancer.ingress[0].hostname}")
+            if [ -n "$IP" ]; then echo "Argo CD URL: https://$IP"; break; fi
+            sleep 10
+          done
 
-      - name: Apply app deployment and service
+      - name: Deploy app to EKS
         run: |
           kubectl apply -f EKS_Cluster/app-deployment.yaml
           kubectl apply -f EKS_Cluster/app-service.yaml
 
-      - name: Install Argo CD CRDs
+      - name: Patch app service to LoadBalancer
         run: |
-          kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/crds.yaml || true
+          kubectl patch svc my-nginx -p '{"spec": {"type": "LoadBalancer"}}'
 
-      - name: Apply Argo CD Application
+      - name: Wait for app external IP
         run: |
-          kubectl apply -f EKS_Cluster/argocd-app.yaml
+          echo "Waiting for app LoadBalancer external IP..."
+          for i in {1..30}; do
+            IP=$(kubectl get svc my-nginx -o jsonpath="{.status.loadBalancer.ingress[0].hostname}")
+            if [ -n "$IP" ]; then echo "App URL: http://$IP"; break; fi
+            sleep 10
+          done
