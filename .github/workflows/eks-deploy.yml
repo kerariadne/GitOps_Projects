@@ -1,0 +1,48 @@
+name: Deploy to EKS
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-west-2  # Change if needed
+
+    - name: Install eksctl
+      run: |
+        curl --silent --location "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C /tmp
+        sudo mv /tmp/eksctl /usr/local/bin
+
+    - name: Create EKS cluster
+      run: |
+        eksctl create cluster \
+          --name gitops-cluster \
+          --version 1.27 \
+          --region us-west-2 \
+          --nodegroup-name linux-nodes \
+          --node-type t3.medium \
+          --nodes 2 \
+          --nodes-min 2 \
+          --nodes-max 2 \
+          --managed
+
+    - name: Update kubeconfig
+      run: aws eks update-kubeconfig --region us-west-2 --name gitops-cluster
+
+    - name: Deploy app manifests
+      run: |
+        kubectl apply -f EKS_Cluster/app-deployment.yaml
+        kubectl apply -f EKS_Cluster/app-service.yaml
+        kubectl apply -f EKS_Cluster/argocd-app.yaml
