@@ -16,6 +16,6 @@ spec:
     spec:
       containers:
       - name: nginx
-        image: vulhub/flask:1.1.1
+        image: nginx:latest
         ports:
         - containerPort: 80
