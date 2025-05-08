@@ -65,14 +65,26 @@ jobs:
           chmod +x argocd
           sudo mv argocd /usr/local/bin/
 
-      - name: Login to Argo CD
+      - name: Get Argo CD external address
+        id: get_argocd_ip
         run: |
-          argocd admin initial-password -n argocd | tee /tmp/password.txt
-          argocd login localhost:8080 --username admin --password $(cat /tmp/password.txt) --insecure
+          for i in {1..30}; do
+            HOST=$(kubectl get svc argocd-server -n argocd -o jsonpath="{.status.loadBalancer.ingress[0].hostname}")
+            if [ -n "$HOST" ]; then
+              echo "host=$HOST" >> $GITHUB_OUTPUT
+              break
+            fi
+            sleep 10
+          done
 
-      - name: Update Argo CD Admin password
+      - name: Change Argo CD admin password
         run: |
-          argocd account update-password --current-password $(cat /tmp/password.txt) --new-password ${{ secrets.ARGOCD_NEW_PASSWORD }}
+          PASSWORD=$(kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath="{.data.password}" | base64 -d)
+          argocd login ${{ steps.get_argocd_ip.outputs.host }} --username admin --password "$PASSWORD" --insecure
+          argocd account update-password \
+            --current-password "$PASSWORD" \
+            --new-password "${{ secrets.ARGOCD_NEW_ADMIN_PASSWORD }}" \
+            --insecure
 
       - name: password
         run: |
