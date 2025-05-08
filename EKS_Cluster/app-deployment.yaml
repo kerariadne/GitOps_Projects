@@ -16,6 +16,6 @@ spec:
     spec:
       containers:
       - name: nginx
-        image: nginx:latest
+        image: tamarabr/flask-hello-world
         ports:
         - containerPort: 80
