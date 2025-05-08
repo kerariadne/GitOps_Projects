@@ -5,10 +5,9 @@ on:
     branches: [ main ]
 
 jobs:
-  setup-eks-access:
+  deploy:
     runs-on: ubuntu-latest
-    outputs:
-      kubeconfig: ${{ steps.update-kubeconfig.outputs.kubeconfig }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
@@ -21,19 +20,7 @@ jobs:
           aws-region: us-west-2
 
       - name: Update kubeconfig
-        id: update-kubeconfig
-        run: |
-          aws eks update-kubeconfig --region us-west-2 --name gitops-cluster
-          echo "kubeconfig=true" >> $GITHUB_OUTPUT
-
-  install-argocd:
-    needs: setup-eks-access
-    runs-on: ubuntu-latest
-    outputs:
-      argocd-host: ${{ steps.get-argocd-ip.outputs.host }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v2
+        run: aws eks update-kubeconfig --region us-west-2 --name gitops-cluster
 
       - name: Create Argo CD namespace
         run: kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
@@ -46,59 +33,13 @@ jobs:
           kubectl patch svc argocd-server -n argocd -p '{"spec": {"type": "LoadBalancer"}}'
 
       - name: Wait for Argo CD server external IP
-        id: get-argocd-ip
         run: |
           echo "Waiting for Argo CD LoadBalancer external IP..."
           for i in {1..30}; do
-            HOST=$(kubectl get svc argocd-server -n argocd -o jsonpath="{.status.loadBalancer.ingress[0].hostname}")
-            if [ -n "$HOST" ]; then
-              echo "Argo CD URL: https://$HOST"
-              echo "host=$HOST" >> $GITHUB_OUTPUT
-              break
-            fi
+            IP=$(kubectl get svc argocd-server -n argocd -o jsonpath="{.status.loadBalancer.ingress[0].hostname}")
+            if [ -n "$IP" ]; then echo "Argo CD URL: https://$IP"; break; fi
             sleep 10
           done
-          if [ -z "$HOST" ]; then
-            echo "Failed to get Argo CD hostname"
-            exit 1
-          fi
-
-      - name: Install Argo CD CLI
-        run: |
-          curl -sSL -o argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
-          chmod +x argocd
-          sudo mv argocd /usr/local/bin/
-
-  configure-argocd:
-    needs: install-argocd
-    runs-on: ubuntu-latest
-    steps:
-      - name: Change Argo CD admin password
-        run: |
-          # Get initial password
-          PASSWORD=$(kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath="{.data.password}" | base64 -d)
-          
-          # Login to Argo CD
-          argocd login ${{ needs.install-argocd.outputs.argocd-host }} \
-            --username admin \
-            --password "$PASSWORD" \
-            --insecure
-          
-          # Change password using environment variables (non-interactive)
-          ARGOCD_CURRENT_PASSWORD="$PASSWORD" \
-          ARGOCD_NEW_PASSWORD="${{ secrets.ARGOCD_NEW_ADMIN_PASSWORD }}" \
-            argocd account update-password --insecure
-
-      - name: Display initial password (for debugging)
-        run: |
-          kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath="{.data.password}" | base64 -d && echo
-
-  deploy-application:
-    needs: [setup-eks-access, install-argocd]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v2
 
       - name: Deploy app to EKS
         run: |
@@ -114,13 +55,9 @@ jobs:
           echo "Waiting for app LoadBalancer external IP..."
           for i in {1..30}; do
             IP=$(kubectl get svc my-nginx -o jsonpath="{.status.loadBalancer.ingress[0].hostname}")
-            if [ -n "$IP" ]; then
-              echo "App URL: http://$IP"
-              break
-            fi
+            if [ -n "$IP" ]; then echo "App URL: http://$IP"; break; fi
             sleep 10
           done
-          if [ -z "$IP" ]; then
-            echo "Failed to get application hostname"
-            exit 1
-          fi
+      - name: password
+        run: |
+          kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath="{.data.password}" | base64 -d && echo
