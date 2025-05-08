@@ -81,6 +81,7 @@ jobs:
         run: |
           PASSWORD=$(kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath="{.data.password}" | base64 -d)
           argocd login ${{ steps.get_argocd_ip.outputs.host }} --username admin --password "$PASSWORD" --insecure
+          # Non-interactive password change
           argocd account update-password \
             --current-password "$PASSWORD" \
             --new-password "${{ secrets.ARGOCD_NEW_ADMIN_PASSWORD }}" \
