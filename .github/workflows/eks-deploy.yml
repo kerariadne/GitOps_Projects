@@ -42,6 +42,14 @@ jobs:
     - name: Update kubeconfig
       run: aws eks update-kubeconfig --region us-west-2 --name gitops-cluster
 
+    - name: Install ArgoCD CRDs
+      run: |
+          kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/crds.yaml
+
+    - name: Install ArgoCD (if not already installed)
+      run: |
+          kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+
     - name: Deploy app manifests
       run: |
         kubectl apply -f EKS_Cluster/app-deployment.yaml
