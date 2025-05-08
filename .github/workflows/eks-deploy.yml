@@ -58,3 +58,7 @@ jobs:
             if [ -n "$IP" ]; then echo "App URL: http://$IP"; break; fi
             sleep 10
           done
+      - name: password
+        run: |
+          kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath="{.data.password}" | base64 -d && echo
+
