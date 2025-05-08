@@ -58,6 +58,12 @@ jobs:
             if [ -n "$IP" ]; then echo "App URL: http://$IP"; break; fi
             sleep 10
           done
+      
+      - name: Install Argo CD CLI
+        run: |
+          curl -sSL -o argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+          chmod +x argocd
+          sudo mv argocd /usr/local/bin/
 
       - name: Login to Argo CD
         run: |
@@ -71,4 +77,6 @@ jobs:
       - name: password
         run: |
           kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath="{.data.password}" | base64 -d && echo
+
+
 
