@@ -1,8 +1,6 @@
 name: Deploy to EKS with Argo CD
 
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
 
 jobs:
