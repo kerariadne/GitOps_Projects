@@ -1,61 +1,123 @@
-name: Deploy to EKS with Argo CD
+name: Deploy to EKS with Argo CD (Multi-Job)
 
 on:
   workflow_dispatch:
 
 jobs:
-  deploy:
+  # JOB 1: ინფრასტრუქტურის მომზადება და ArgoCD-ის ინსტალაცია
+  setup_argocd:
     runs-on: ubuntu-latest
+    outputs:
+      argocd_server_url: ${{ steps.get_argocd_url.outputs.url }}
+      argocd_admin_password: ${{ steps.get_argocd_password.outputs.password }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v2
+      - name: რეპოზიტორიის კოდის ჩამოტვირთვა
+        uses: actions/checkout@v3 
 
-      - name: Configure AWS credentials
+      - name: AWS Credentials-ების კონფიგურაცია
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-west-2 
+
+      - name: Kubeconfig-ის განახლება EKS კლასტერთან დასაკავშირებლად
+        run: aws eks update-kubeconfig --region us-west-2 --name gitops-cluster 
+
+      - name: ArgoCD Namespace-ის შექმნა (თუ არ არსებობს)
+        run: kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: ArgoCD-ის ინსტალაცია
+        run: kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+
+      - name: ArgoCD Deployment-ების მზადყოფნის ლოდინი
+        run: |
+          echo "ველოდებით ArgoCD-ის კომპონენტების სრულად ამუშავებას..."
+          kubectl wait --for=condition=available deployment --all -n argocd --timeout=300s
+
+      - name: ArgoCD სერვერის სერვისის ტიპის შეცვლა LoadBalancer-ზე
+        run: |
+          kubectl patch svc argocd-server -n argocd -p '{"spec": {"type": "LoadBalancer"}}'
+
+      - name: ArgoCD სერვერის გარე IP/Hostname-ის მიღება და შენახვა
+        id: get_argocd_url
+        run: |
+          echo "ველოდებით ArgoCD LoadBalancer-ის გარე IP/Hostname-ს..."
+          for i in {1..30}; do
+            URL_OR_IP=$(kubectl get svc argocd-server -n argocd -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+            if [ -z "$URL_OR_IP" ]; then # თუ hostname ცარიელია, ვცადოთ IP
+                URL_OR_IP=$(kubectl get svc argocd-server -n argocd -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+            fi
+
+            if [ -n "$URL_OR_IP" ]; then
+              if [[ "$URL_OR_IP" == http* ]]; then
+                FINAL_URL="$URL_OR_IP"
+              else
+                FINAL_URL="https://$URL_OR_IP" 
+              fi
+              echo "ArgoCD URL: $FINAL_URL"
+              echo "::set-output name=url::$FINAL_URL" 
+              break
+            fi
+            if [ $i -eq 30 ]; then echo "ArgoCD LoadBalancer-ის IP/Hostname ვერ მოიძებნა 5 წუთში."; exit 1; fi
+            sleep 10
+          done
+
+      - name: ArgoCD-ის საწყისი ადმინისტრატორის პაროლის მიღება და შენახვა
+        id: get_argocd_password
+        run: |
+          echo "ვიღებთ ArgoCD-ის ადმინისტრატორის პაროლს..."
+          PASSWORD=$(kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath="{.data.password}" | base64 -d)
+          echo "::set-output name=password::$PASSWORD" # ვინახავთ გამომავალ ცვლადში
+          echo "ArgoCD Admin Password (მხოლოდ ლოგისთვის, არ გამოიყენოთ პროდაქშენში ასე): $PASSWORD"
+
+
+  # JOB 2: ArgoCD Application-ის შექმნა (დამოკიდებულია setup_argocd job-ზე)
+  create_argocd_application:
+    runs-on: ubuntu-latest
+    needs: setup_argocd 
+    steps:
+      - name: რეპოზიტორიის კოდის ჩამოტვირთვა (საჭიროა argo-app/nginx-application.yaml ფაილისთვის)
+        uses: actions/checkout@v3
+
+      - name: AWS Credentials-ების კონფიგურაცია (საჭიროა kubectl-სთვის)
         uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-west-2
 
-      - name: Update kubeconfig
+      - name: Kubeconfig-ის განახლება EKS კლასტერთან დასაკავშირებლად
         run: aws eks update-kubeconfig --region us-west-2 --name gitops-cluster
 
-      - name: Create Argo CD namespace
-        run: kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
+      - name: Nginx აპლიკაციისთვის ArgoCD Application რესურსის შექმნა
+        run: kubectl apply -f EKS_Cluster/argocd-app.yaml -n argocd
 
-      - name: Install Argo CD
-        run: kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
-
-      - name: Patch Argo CD server to LoadBalancer
+      - name: ArgoCD აპლიკაციის სინქრონიზაციის სტატუსის შემოწმება (სურვილისამებრ)
         run: |
-          kubectl patch svc argocd-server -n argocd -p '{"spec": {"type": "LoadBalancer"}}'
-
-      - name: Wait for Argo CD server external IP
-        run: |
-          echo "Waiting for Argo CD LoadBalancer external IP..."
-          for i in {1..30}; do
-            IP=$(kubectl get svc argocd-server -n argocd -o jsonpath="{.status.loadBalancer.ingress[0].hostname}")
-            if [ -n "$IP" ]; then echo "Argo CD URL: https://$IP"; break; fi
+          echo "ველოდებით ArgoCD აპლიკაციის (nginx-app) სინქრონიზაციას..."
+          for i in {1..18}; do # ველოდებით მაქსიმუმ 3 წუთი
+            SYNC_STATUS=$(kubectl get application nginx-app -n argocd -o jsonpath='{.status.sync.status}')
+            HEALTH_STATUS=$(kubectl get application nginx-app -n argocd -o jsonpath='{.status.health.status}')
+            echo "Sync Status: $SYNC_STATUS, Health Status: $HEALTH_STATUS"
+            if [ "$SYNC_STATUS" == "Synced" ] && [ "$HEALTH_STATUS" == "Healthy" ]; then
+              echo "ArgoCD აპლიკაცია nginx-app წარმატებით დასინქრონდა და ჯანმრთელია."
+              break
+            fi
+            if [ $i -eq 18 ]; then echo "ArgoCD აპლიკაცია nginx-app ვერ დასინქრონდა 3 წუთში."; exit 1; fi
             sleep 10
           done
 
-      - name: Deploy app to EKS
-        run: |
-          kubectl apply -f EKS_Cluster/app-deployment.yaml
-          kubectl apply -f EKS_Cluster/app-service.yaml
 
-      - name: Patch app service to LoadBalancer
+  # JOB 3: ინფორმაციის გამოტანა და workflow-ს დასრულება (დამოკიდებულია წინა job-ებზე)
+  workflow_summary:
+    runs-on: ubuntu-latest
+    needs: [setup_argocd, create_argocd_application] 
+    steps:
+      - name: ArgoCD-ის წვდომის ინფორმაციის ჩვენება
         run: |
-          kubectl patch svc my-nginx -p '{"spec": {"type": "LoadBalancer"}}'
-
-      - name: Wait for app external IP
-        run: |
-          echo "Waiting for app LoadBalancer external IP..."
-          for i in {1..30}; do
-            IP=$(kubectl get svc my-nginx -o jsonpath="{.status.loadBalancer.ingress[0].hostname}")
-            if [ -n "$IP" ]; then echo "App URL: http://$IP"; break; fi
-            sleep 10
-          done
-      - name: password
-        run: |
-          kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath="{.data.password}" | base64 -d && echo
+          echo "ArgoCD Workflow წარმატებით დასრულდა!"
+          echo "ArgoCD სერვერის URL: ${{ needs.setup_argocd.outputs.argocd_server_url }}"
+          echo "ArgoCD ადმინისტრატორის პაროლი: ${{ needs.setup_argocd.outputs.argocd_admin_password }}"
+          echo "Nginx აპლიკაცია იმართება ArgoCD-ის მიერ. გთხოვთ, შეამოწმოთ ArgoCD UI."
+          echo "Nginx აპლიკაციის URL-ის მისაღებად, შეამოწმეთ 'my-nginx' სერვისის LoadBalancer EKS კლასტერში (default namespace-ში) მას შემდეგ, რაც ArgoCD დაასინქრონებს მას."
