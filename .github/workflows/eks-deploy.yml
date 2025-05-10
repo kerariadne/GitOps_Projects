@@ -42,10 +42,9 @@ jobs:
       - name: ArgoCD სერვერის გარე IP/Hostname-ის მიღება და შენახვა
         id: get_argocd_url
         run: |
-          echo "ველოდებით ArgoCD LoadBalancer-ის გარე IP/Hostname-ს..."
           for i in {1..30}; do
             URL_OR_IP=$(kubectl get svc argocd-server -n argocd -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
-            if [ -z "$URL_OR_IP" ]; then # თუ hostname ცარიელია, ვცადოთ IP
+            if [ -z "$URL_OR_IP" ]; then
                 URL_OR_IP=$(kubectl get svc argocd-server -n argocd -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
             fi
 
@@ -68,19 +67,19 @@ jobs:
         run: |
           echo "ვიღებთ ArgoCD-ის ადმინისტრატორის პაროლს..."
           PASSWORD=$(kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath="{.data.password}" | base64 -d)
-          echo "::set-output name=password::$PASSWORD" # ვინახავთ გამომავალ ცვლადში
-          echo "ArgoCD Admin Password (მხოლოდ ლოგისთვის, არ გამოიყენოთ პროდაქშენში ასე): $PASSWORD"
+          echo "::set-output name=password::$PASSWORD"
+          echo "ArgoCD Admin Password : $PASSWORD"
 
 
-  # JOB 2: ArgoCD Application-ის შექმნა (დამოკიდებულია setup_argocd job-ზე)
+  # JOB 2: ArgoCD Application-ის შექმნა 
   create_argocd_application:
     runs-on: ubuntu-latest
     needs: setup_argocd 
     steps:
-      - name: რეპოზიტორიის კოდის ჩამოტვირთვა (საჭიროა argo-app/nginx-application.yaml ფაილისთვის)
+      - name: რეპოზიტორიის კოდის ჩამოტვირთვა 
         uses: actions/checkout@v3
 
-      - name: AWS Credentials-ების კონფიგურაცია (საჭიროა kubectl-სთვის)
+      - name: AWS Credentials-ების კონფიგურაცია 
         uses: aws-actions/configure-aws-credentials@v2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -93,6 +92,14 @@ jobs:
       - name: Nginx აპლიკაციისთვის ArgoCD Application რესურსის შექმნა
         run: kubectl apply -f EKS_Cluster/argocd-app.yaml -n argocd
 
+      - name: აპლიკაციის URL
+        run: |
+          for i in {1..30}; do
+            IP=$(kubectl get svc my-nginx -o jsonpath="{.status.loadBalancer.ingress[0].hostname}")
+            if [ -n "$IP" ]; then echo "აპლიკაციიკს URL: http://$IP"; break; fi
+            sleep 10
+          done
+
 
   # JOB 3: ინფორმაციის გამოტანა და workflow-ს დასრულება
   workflow_summary:
@@ -104,5 +111,3 @@ jobs:
           echo "ArgoCD Workflow წარმატებით დასრულდა!"
           echo "ArgoCD სერვერის URL: ${{ needs.setup_argocd.outputs.argocd_server_url }}"
           echo "ArgoCD ადმინისტრატორის პაროლი: ${{ needs.setup_argocd.outputs.argocd_admin_password }}"
-          echo "Nginx აპლიკაცია იმართება ArgoCD-ის მიერ. გთხოვთ, შეამოწმოთ ArgoCD UI."
-          echo "Nginx აპლიკაციის URL-ის მისაღებად, შეამოწმეთ 'my-nginx' სერვისის LoadBalancer EKS კლასტერში (default namespace-ში) მას შემდეგ, რაც ArgoCD დაასინქრონებს მას."
