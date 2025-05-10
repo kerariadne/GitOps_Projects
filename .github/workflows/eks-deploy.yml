@@ -20,7 +20,29 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-west-2 
-
+     
+      - name: EKS კლასტერის შემოწმება ან შექმნა
+        id: check_or_create_eks
+        run: |
+          CLUSTER_NAME="gitops-cluster"
+          REGION="us-west-2"
+          if eksctl get cluster --name $CLUSTER_NAME --region $REGION --output json | jq -e '.[0].Name' > /dev/null; then
+            echo "EKS კლასტერი $CLUSTER_NAME უკვე არსებობს."
+          else
+            eksctl create cluster \
+              --name $CLUSTER_NAME \
+              --region $REGION \
+              --version 1.27 \
+              --nodegroup-name standard-workers \
+              --node-type t3.medium \
+              --nodes 1 \
+              --nodes-min 1 \
+              --nodes-max 2 \
+              --managed \
+              --with-oidc \ 
+              --timeout=40m 
+          fi
+      
       - name: Kubeconfig-ის განახლება EKS კლასტერთან დასაკავშირებლად
         run: aws eks update-kubeconfig --region us-west-2 --name gitops-cluster 
 
