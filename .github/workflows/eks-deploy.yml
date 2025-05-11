@@ -126,7 +126,7 @@ jobs:
       - name: აპლიკაციის URL
         run: |
           for i in {1..30}; do
-            IP=$(kubectl get svc my-nginx -o jsonpath="{.status.loadBalancer.ingress[0].hostname}")
+            IP=$(kubectl get svc httpd -o jsonpath="{.status.loadBalancer.ingress[0].hostname}")
             if [ -n "$IP" ]; then echo "აპლიკაციიკს URL: http://$IP"; break; fi
             sleep 10
           done
