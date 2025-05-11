@@ -20,7 +20,13 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-west-2 
-     
+
+      - name: eksctl და jq ინსტალაცია
+        run: |
+          curl --silent --location "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C /tmp
+          sudo mv /tmp/eksctl /usr/local/bin
+          sudo apt-get update && sudo apt-get install -y jq
+          
       - name: EKS კლასტერის შემოწმება ან შექმნა
         id: check_or_create_eks
         run: |
