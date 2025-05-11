@@ -49,8 +49,7 @@ jobs:
               --nodes-min 1 \
               --nodes-max 2 \
               --managed \
-              --with-oidc \ 
-              --timeout=40m 
+              --with-oidc  
           fi
       
       - name: Kubeconfig-ის განახლება EKS კლასტერთან დასაკავშირებლად
