@@ -23,7 +23,7 @@ jobs:
 
       - name: eksctl ინსტალაცია
         run: |
-          ARCH=amd64  # ARM სისტემისთვის გამოიყენე: arm64, armv6 ან armv7
+          ARCH=amd64  
           PLATFORM=$(uname -s)_$ARCH
           curl -sLO "https://github.com/eksctl-io/eksctl/releases/latest/download/eksctl_$PLATFORM.tar.gz"
           curl -sL "https://github.com/eksctl-io/eksctl/releases/latest/download/eksctl_checksums.txt" | grep $PLATFORM | sha256sum --check
