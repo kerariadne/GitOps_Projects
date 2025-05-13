@@ -69,24 +69,17 @@ This project showcases a complete GitOps workflow for deploying and managing an 
     *   Any subsequent changes pushed to the manifests in the `EKS_Cluster/` directory (e.g., updating the Nginx image version, changing replica count) will be automatically detected by ArgoCD.
     *   ArgoCD will then synchronize these changes to the EKS cluster, ensuring the live state matches the desired state defined in Git.
 
-## 🌐 Accessing Services
-
-*   **ArgoCD UI:** The GitHub Actions workflow will output the LoadBalancer DNS/IP for the `argocd-server` service. Access it via HTTPS. Log in with username `admin` and the password you set via `ARGOCD_NEW_ADMIN_PASSWORD`.
-*   **Nginx Application:** Once ArgoCD has deployed the Nginx application, you can find the LoadBalancer DNS/IP for the `my-nginx` (or `my-httpd` if you changed it) service by running `kubectl get svc my-nginx -n default` (or the relevant namespace). Access it via HTTP in your browser.
 
 ## 📸 Screenshots
-
-*(Consider adding screenshots here as you generate them during your master's thesis work. You can replace the placeholder links below with actual image paths once you have them, e.g., `./screenshots/my-image.png`)*
 
 *   **GitHub Actions Workflow Success:**
 ![GitHub Actions](actions.png)
 *   **ArgoCD UI - Application Synced & Healthy:**
 ![ArgoCD UI](argocd.png)
-*   **ArgoCD UI - After an Update (e.g., Nginx to Httpd):**
-![ArgoCD UI](argocdhttpd.png)
 *   **Deployed Nginx Application in Browser:**
 ![Nginx App Screenshot](nginx_app.png)
-
+*   **ArgoCD UI - After an Update (Nginx to Httpd):**
+![ArgoCD UI](argocdhttpd.png)
 
 ## ✅ Project Status & Key Milestones Achieved
 
