@@ -2,6 +2,8 @@
 
 This project showcases a complete GitOps workflow for deploying and managing an Nginx web server on Amazon Web Services (AWS) Elastic Kubernetes Service (EKS). The entire process, from infrastructure provisioning (ArgoCD setup) to application deployment, is orchestrated by ArgoCD, with GitHub Actions facilitating the initial setup and continuous synchronization based on GitOps principles.
 
+![Workflow](workflow.png)
+
 ## 🌟 Core Concepts Demonstrated
 
 *   **Git as the Single Source of Truth:** All configurations for the EKS cluster, ArgoCD, and the Nginx application reside in this Git repository.
